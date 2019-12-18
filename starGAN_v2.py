@@ -4,6 +4,7 @@ import torch
 import glob
 from torch import nn
 import numpy as np
+from torch import autograd
 import torch.nn.functional as F
 
 from utils import get_scheduler, weights_init
@@ -72,7 +73,7 @@ class StarGAN(nn.Module):
 
         self.criterion_l1 = nn.L1Loss()
         self.criterion_l2 = nn.MSELoss()
-        self.criterion_bce = nn.BCELoss()
+        self.criterion_bce = nn.BCEWithLogitsLoss()
 
         self.to(self.device)
 
@@ -100,6 +101,31 @@ class StarGAN(nn.Module):
 
         return loss
 
+    def calc_r1(self, real_images, logit_real):
+        batch_size = real_images.size(0)
+        grad_dout = autograd.grad(
+            outputs=logit_real.sum(), inputs=real_images, allow_unused=True,  # TODO : allow_unused=True
+            create_graph=True, retain_graph=True, only_inputs=True
+        )[0]
+        grad_dout2 = grad_dout.pow(2)
+        assert (grad_dout2.size() == real_images.size())
+        reg = grad_dout2.view(batch_size, -1).sum(1).mean()
+        return reg
+
+    def calc_gp(self, real_images, fake_images):
+        alpha = torch.rand(real_images.size(0), 1, 1, 1).to(self.device)
+        interpolated = (alpha * real_images + ((1 - alpha) * fake_images)).requires_grad_(True)
+        prob_interpolated, _ = self.discriminator(interpolated)
+
+        grad_outputs = torch.ones(prob_interpolated.size()).to(self.device)
+        gradients = torch.autograd.grad(outputs=prob_interpolated, inputs=interpolated,
+                                        grad_outputs=grad_outputs,
+                                        create_graph=True, retain_graph=True)[0]
+
+        gradients = gradients.reshape(gradients.size(0), -1)
+        gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+        return gradient_penalty
+
     def assign_variables(self, real_image):
         self.real = real_image.to(self.device)
         random_noise = torch.randn(real_image.size(0), 16).to(self.device)
@@ -118,6 +144,8 @@ class StarGAN(nn.Module):
 
     def update_d(self, real, real_domain, random_noise, random_domain):
         reset_gradients([self.optimizer_g, self.optimizer_d])
+        real.requires_grad_()  # TODO : delete
+
         style_mapped = self.mapping_network(random_noise, random_domain)
         fake = self.generator(real, style_mapped)
 
@@ -128,12 +156,18 @@ class StarGAN(nn.Module):
         adv_d_real = self.calc_adversarial_loss(logit_real, is_real=True)
         adv_d_fake = self.calc_adversarial_loss(logit_fake, is_real=False)
 
-        loss_d = adv_d_fake + adv_d_real
+        if self.config['gan_type'] == 'bce':
+            regul = self.calc_r1(real, logit_real)
+        elif self.config['gan_type'] == 'wgan':
+            regul = self.calc_gp(real, fake)
+
+        loss_d = adv_d_fake + adv_d_real + regul
         loss_d.backward()
         self.optimizer_d.step()
 
         self.loss['adv_d_fake'] = adv_d_fake.item()
         self.loss['adv_d_real'] = adv_d_real.item()
+        self.loss['regul'] = regul.item()
 
         self.logit_real = logit_real
         self.logit_fake_d = logit_fake
@@ -234,6 +268,7 @@ class StarGAN(nn.Module):
     def print_log(self, epoch, iters):
         adv_d_real = self.loss['adv_d_real']
         adv_d_fake = self.loss['adv_d_fake']
+        regul = self.loss['regul']
         adv_g = self.loss['adv_g']
         style_recon_loss = self.loss['style_recon_loss']
         ds_loss = self.loss['ds_loss']
@@ -241,9 +276,9 @@ class StarGAN(nn.Module):
 
         print(
             "[Epoch {}/{}, iters: {}/{}] " \
-            "- Adv: {:5.4} {:5.4} / {:5.4}, Style recon: {:5.4}, DS: {:5.4}, Cyc : {:5.4}".format(
+            "- Adv: {:5.4} {:5.4} / {:5.4}, Style recon: {:5.4}, DS: {:5.4}, Cyc : {:5.4}, Regul : {:5.4}".format(
                 epoch, self.epoch_size, iters + 1, self.iter_size,
-                adv_d_real, adv_d_fake, adv_g, style_recon_loss, ds_loss, cyc_loss
+                adv_d_real, adv_d_fake, adv_g, style_recon_loss, ds_loss, cyc_loss, regul
             )
         )
 
@@ -305,7 +340,7 @@ class StarGAN(nn.Module):
             left_concat = torch.cat([torch.zeros_like(reference[:1]), reference])
             left_concat, _, _ = reshape_batch_torch(left_concat, n_cols=1, n_rows=-1)
 
-            save_image = np.concatenate([left_concat, right_concat], axis=1)
+            save_image = preprocess(np.concatenate([left_concat, right_concat], axis=1))
 
             if save:
                 save_name = os.path.join(self.path_sample,
