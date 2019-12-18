@@ -104,7 +104,7 @@ class StarGAN(nn.Module):
     def calc_r1(self, real_images, logit_real):
         batch_size = real_images.size(0)
         grad_dout = autograd.grad(
-            outputs=logit_real.sum(), inputs=real_images, allow_unused=True,  # TODO : allow_unused=True
+            outputs=logit_real.sum(), inputs=real_images,
             create_graph=True, retain_graph=True, only_inputs=True
         )[0]
         grad_dout2 = grad_dout.pow(2)
@@ -113,6 +113,7 @@ class StarGAN(nn.Module):
         return reg
 
     def calc_gp(self, real_images, fake_images):
+        raise DeprecationWarning("")
         alpha = torch.rand(real_images.size(0), 1, 1, 1).to(self.device)
         interpolated = (alpha * real_images + ((1 - alpha) * fake_images)).requires_grad_(True)
         prob_interpolated, _ = self.discriminator(interpolated)
@@ -144,7 +145,7 @@ class StarGAN(nn.Module):
 
     def update_d(self, real, real_domain, random_noise, random_domain):
         reset_gradients([self.optimizer_g, self.optimizer_d])
-        real.requires_grad_()  # TODO : delete
+        real.requires_grad_()  # TODO :
 
         style_mapped = self.mapping_network(random_noise, random_domain)
         fake = self.generator(real, style_mapped)
@@ -178,8 +179,8 @@ class StarGAN(nn.Module):
         style_mapped = self.mapping_network(random_noise, random_domain)
         style_origin = self.style_encoder(real, real_domain)
         fake = self.generator(real, style_mapped)
-        image_recon = self.generator(fake, style_origin)
         style_recon = self.style_encoder(fake, random_domain)
+        image_recon = self.generator(fake, style_origin)
 
         # Adversarial
         logit_fake = self.discriminator(fake, random_domain)
@@ -259,7 +260,7 @@ class StarGAN(nn.Module):
                     self.print_log(epoch, iters)
 
                     if not (iters + 1) % image_display_iter:
-                        show_batch_torch(torch.cat([self.real, self.fake]), n_rows=2, n_cols=-1)
+                        show_batch_torch(torch.cat([self.real, self.fake.clamp(-1, 1)]), n_rows=2, n_cols=-1)
 
                         if not (iters + 1) % image_save_iter:
                             self.test_sample = self.generate_test_samples(save=True)
@@ -331,7 +332,7 @@ class StarGAN(nn.Module):
             style_reference = self.style_encoder(reference, reference_domain)
             style_reference = style_reference.repeat(1, reference.size(0), 1).view(-1, 1, self.dim_style)
             source = self.test_source.repeat(reference.size(0), 1, 1, 1).view(-1, 3, self.height, self.width)
-            generated = self.generator(source, style_reference)
+            generated = self.generator(source, style_reference).clamp(-1, 1)
 
             right_concat, _, _ = reshape_batch_torch(
                 torch.cat([self.test_source, generated]), n_cols=self.test_batch_size, n_rows=-1

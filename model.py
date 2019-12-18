@@ -40,7 +40,7 @@ class Generator(nn.Module):
                 ResBlockPreActivationWithUpsample(dim, dim // 2, 3, 1, 1, 'adain_affine', 'relu')]
             dim //= 2
 
-        layers += [Conv2dBlock(dim, 3, 3, 1, 1, 'none', 'tanh', bias=False)]  # TODO : delete tanh
+        layers += [Conv2dBlock(dim, 3, 3, 1, 1, 'none', 'none', bias=False)]
 
         self.layers = layers
         self.model = nn.Sequential(*layers)
@@ -83,11 +83,9 @@ class MappingNetwork(nn.Module):
 
     def forward(self, x, target_domain):
         x = self.model(x).view(-1, self.num_domain, self.dim_style)
-        return gather_domain(x, target_domain)  # .squeeze()
+        return gather_domain(x, target_domain)  # (batch, domain, 64) -> (batch, 1, 64)
 
 
-# TODO : discriminator 랑 구조,...
-# TODO : pre-activation resblock 순서좀 봐야될듯...
 class StyleEncoder(nn.Module):
     def __init__(self, config_what, num_domain, dim_style):
         super(StyleEncoder, self).__init__()
@@ -126,7 +124,7 @@ class StyleEncoder(nn.Module):
         # print('style encoder', x.shape)
         x = self.model(x).view(-1, self.num_domain, self.dim_style)
         # print('style encoder', x.shape)
-        return gather_domain(x, target_domain)
+        return gather_domain(x, target_domain)  # (batch, domain, 64) -> (batch, 1, 64)
 
 
 class Discriminator(nn.Module):
@@ -165,7 +163,7 @@ class Discriminator(nn.Module):
 
     def forward(self, x, target_domain):
         x = self.model(x).view(-1, self.num_domain, self.dim_style)
-        return gather_domain(x, target_domain)
+        return gather_domain(x, target_domain)  # (batch, domain, 1) -> (batch, 1, 1)
 
 
 if __name__ == '__main__':

@@ -3,10 +3,9 @@ log_iter: 50                   # How often do you want to log the training stats
 image_display_iter: 500        # How often do you want to display output images during training
 image_save_iter: 5000          # How often do you want to save output images during training
 
-
 # optimization options
 max_iter: 100000               # maximum number of training iterations
-batch_size: 8                  # batch size  # TODO : 4 -> 8
+batch_size: 8                  # batch size
 batch_size_test: 4             # batch size for test samples
 optimizer: Adam                # optimizer
 beta1: 0                       # Adam parameter
@@ -26,48 +25,39 @@ w_cyc: 1                       # weight of cycle consistency loss
 w_regul: 1                     # weight of non-saturating gan R1 regularization term
 
 # model options
-gan_type: lsgan                 # GAN loss [bce/lsgan/wgan]  # TODO :
-# bias: False
-num_domain: 2                            # number of domains
-dim_style: 64
+gan_type: bce                  # GAN loss [bce/lsgan/wgan]  # TODO :
+target_attrs: "Male"
+num_domain: 2                  # number of domains
+dim_style: 64                  # style dimension
 gen:
-  dim: 32
-  n_downs: 2         # TODO : 2 -> 4
-  n_intermediates: 2 # TODO : 2 -> 4
+  dim: 32                      # number of filters in the bottommost layer
+  n_downs: 2                   # number of downsampling layers TODO : 2 -> 4
+  n_intermediates: 2           # number of intermediate layers TODO : 2 -> 4
   activation: relu             # activation function [relu/lrelu/prelu/selu/tanh]
   pad_type: zero               # padding type [zero/reflect]
 mapping_network:
-  dim_latent: 16
-  dim: 512
-  n_mlp: 6
-  norm: none
-  activation: relu
+  dim_latent: 16               # dimension of latent vector
+  dim: 512                     # number of filters in the bottommost layer
+  n_mlp: 6                     # number of mlp layers TODO : 2 -> 4
+  norm: none                   # normalization layer [none/bn/in/ln/adain/adain_affine]
+  activation: relu             # activation function [relu/lrelu/prelu/selu/tanh]
+  pad_type: zero               # padding type [zero/reflect]
 style_encoder:
-  ch: 16
-  n_intermediates: 2 # TODO : 2 -> 6
-  activation: relu
-  D: 64
+  ch: 16                       # channel multiplier
+  n_intermediates: 2           # number of intermediate layers # TODO : 2 -> 6
+  activation: relu             # activation function [relu/lrelu/prelu/selu/tanh]
+  D: 64                        # output dimension, same as style dimension
 dis:
-  ch: 16
-  n_intermediates: 2 # TODO : 2 -> 6
+  ch: 32                       # channel multiplier
+  n_intermediates: 2           # number of intermediate layers # TODO : 2 -> 6
   activation: lrelu            # activation function [relu/lrelu/prelu/selu/tanh]
-  D: 1
-#  norm: none                   # normalization layer [none/bn/in/ln]
-#  pad_type: zero               # padding type [zero/reflect]
-
+  D: 1                         # output dimension, 1 for binary classification
 
 # data load options
-
-#re_size: 256                   # first resize the shortest image side to this size
-is_flip: True                  # whether horizontally flipping images when reading images
-#
-img_path: celeba/images                        # path of image saving
-attr_file: celeba/list_attr_celeba.txt         # path of model saving
+is_flip: True                             # whether horizontally flipping images when reading images
+num_workers: 8                            # number of data loading threads
+crop_size: 178                            # random crop image of this height    # TODO :
+re_size: 128                              # first resize the shortest image side to this size  # TODO : 128 -> 256
+img_path: celeba/images                   # path of image saving
+attr_file: celeba/list_attr_celeba.txt    # path of model saving
 save_name: celeba                         # unique name for save folder
-
-
-
-num_workers: 8                 # number of data loading threads
-crop_size: 178                 # random crop image of this height
-re_size: 128                   # first resize the shortest image side to this size  # TODO : 128 -> 256
-target_attrs: "Male"
