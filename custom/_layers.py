@@ -1,13 +1,11 @@
 from torch import nn
 import torch
 import torch.nn.functional as F
-from styleGAN import AdaptiveInstanceNormWithAffineTransform
 
 
 # ------------------------------------------------------------
 # --- Model Structures Template
 # ------------------------------------------------------------
-
 class ResBlock(nn.Module):
     def __init__(self, dim, kernel_size=3, stride=1, padding=1, norm='in', activation='relu', pad_type='zero'):
         super(ResBlock, self).__init__()
@@ -412,3 +410,66 @@ def _activation(activation):
         return Identity()
     else:
         raise NotImplementedError("Unsupported activation: {}".format(activation))
+
+
+# Adain with affine transformation
+class AdaptiveInstanceNormWithAffineTransform(nn.Module):
+    def __init__(self, in_channel, style_dim):
+        super().__init__()
+
+        self.norm = nn.InstanceNorm2d(in_channel)
+        self.style = EqualLinear(style_dim, in_channel * 2)
+
+        self.style.linear.bias.data[:in_channel] = 1
+        self.style.linear.bias.data[in_channel:] = 0
+
+    def forward(self, input):
+        out = self.norm(input)
+        out = self.gamma * out + self.beta
+        return out
+
+
+class EqualLinear(nn.Module):
+    def __init__(self, in_dim, out_dim):
+        super().__init__()
+
+        linear = nn.Linear(in_dim, out_dim)
+        linear.weight.data.normal_()
+        linear.bias.data.zero_()
+
+        self.linear = equal_lr(linear)
+
+    def forward(self, input):
+        return self.linear(input)
+
+
+def equal_lr(module, name='weight'):
+    EqualLR.apply(module, name)
+
+    return module
+
+
+class EqualLR:
+    def __init__(self, name):
+        self.name = name
+
+    def compute_weight(self, module):
+        weight = getattr(module, self.name + '_orig')
+        fan_in = weight.data.size(1) * weight.data[0][0].numel()
+
+        return weight * sqrt(2 / fan_in)
+
+    @staticmethod
+    def apply(module, name):
+        fn = EqualLR(name)
+
+        weight = getattr(module, name)
+        del module._parameters[name]
+        module.register_parameter(name + '_orig', nn.Parameter(weight.data))
+        module.register_forward_pre_hook(fn)
+
+        return fn
+
+    def __call__(self, module, input):
+        weight = self.compute_weight(module)
+        setattr(module, self.name, weight)
