@@ -1,0 +1,73 @@
+# logger options
+log_iter: 10                   # How often do you want to log the training stats
+image_display_iter: 500        # How often do you want to display output images during training
+image_save_iter: 5000          # How often do you want to save output images during training
+
+
+# optimization options
+max_iter: 100000               # maximum number of training iterations
+batch_size: 4                 # batch size  # TODO : 4 -> 8
+batch_size_test: 2
+optimizer: Adam
+beta1: 0                     # Adam parameter
+beta2: 0.99                   # Adam parameter
+init: kaiming                  # initialization [gaussian/kaiming/xavier/orthogonal]
+d_step: 1
+g_step: 1
+lr: 0.0001                   # initial learning rate
+lr_F: 0.000001               # initial learning rate for mapping network
+#lr_policy: step              # learning rate scheduler
+#step_size: 1000              # how often to decay learning rate  # TODO : check Olr decay details
+#init_decay_step: 5000       #
+#gamma: 0.99999               # how much to decay learning rate
+w_style: 1                       # weight of adversarial loss
+w_ds: 1                       # weight of image reconstruction loss
+w_cyc: 1                   # weight of content reconstruction loss
+w_regul: 1
+
+# model options
+gan_type: lsgan                 # GAN loss [bce/lsgan/wgan]  # TODO : wgan -> bce
+# bias: False
+num_domain: 2                            # number of domains
+dim_style: 64
+gen:
+  dim: 32
+  n_downs: 2         # TODO : 2 -> 4
+  n_intermediates: 2 # TODO : 2 -> 4
+  activation: relu             # activation function [relu/lrelu/prelu/selu/tanh]
+  pad_type: zero               # padding type [zero/reflect]
+mapping_network:
+  dim_latent: 16
+  dim: 512
+  n_mlp: 6
+  norm: none
+  activation: relu
+style_encoder:
+  ch: 16
+  n_intermediates: 2 # TODO : 2 -> 6
+  activation: relu
+  D: 64
+dis:
+  ch: 16
+  n_intermediates: 2 # TODO : 2 -> 6
+  activation: lrelu            # activation function [relu/lrelu/prelu/selu/tanh]
+  D: 1
+#  norm: none                   # normalization layer [none/bn/in/ln]
+#  pad_type: zero               # padding type [zero/reflect]
+
+
+# data load options
+
+#re_size: 256                   # first resize the shortest image side to this size
+is_flip: True                  # whether horizontally flipping images when reading images
+#
+img_path: celeba/images                        # path of image saving
+attr_file: celeba/list_attr_celeba.txt         # path of model saving
+save_name: celeba                         # unique name for save folder
+
+
+
+num_workers: 8                 # number of data loading threads
+crop_size: 178                 # random crop image of this height
+re_size: 128                   # first resize the shortest image side to this size  # TODO : 128 -> 256
+target_attrs: "Male"

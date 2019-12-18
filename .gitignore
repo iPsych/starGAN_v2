@@ -1,0 +1,13 @@
+*/__pycache__/*
+/models/
+/dev/
+*.ipynb_checkpoints*
+.idea*
+*.ipynb
+*.h5
+*.npy
+*.xml
+*.pyc
+*.DS_Store
+
+results/
