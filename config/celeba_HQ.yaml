@@ -1,7 +1,7 @@
 # logger options
 log_iter: 50                   # How often do you want to log the training stats
 image_display_iter: 500        # How often do you want to display output images during training
-image_save_iter: 5000          # How often do you want to save output images during training
+image_save_iter: 3000          # How often do you want to save output images during training
 
 # optimization options
 max_iter: 100000               # maximum number of training iterations
@@ -25,31 +25,31 @@ w_cyc: 1                       # weight of cycle consistency loss
 w_regul: 1                     # weight of non-saturating gan R1 regularization term
 
 # model options
-gan_type: bce                  # GAN loss [bce/lsgan/wgan]  # TODO :
+gan_type: bce                  # GAN loss [bce/lsgan/wgan]
 target_attrs: "Male"
 num_domain: 2                  # number of domains
 dim_style: 64                  # style dimension
 gen:
   dim: 32                      # number of filters in the bottommost layer
-  n_downs: 2                   # number of downsampling layers TODO : 2 -> 4
-  n_intermediates: 2           # number of intermediate layers TODO : 2 -> 4
+  n_downs: 3                   # number of downsampling layers TODO : 2 -> 4
+  n_intermediates: 4           # number of intermediate layers TODO : 2 -> 4
   activation: relu             # activation function [relu/lrelu/prelu/selu/tanh]
   pad_type: zero               # padding type [zero/reflect]
 mapping_network:
   dim_latent: 16               # dimension of latent vector
   dim: 512                     # number of filters in the bottommost layer
-  n_mlp: 6                     # number of mlp layers TODO : 2 -> 4
+  n_mlp: 6                     # number of mlp layers TODO : 2 -> 6
   norm: none                   # normalization layer [none/bn/in/ln/adain/adain_affine]
   activation: relu             # activation function [relu/lrelu/prelu/selu/tanh]
   pad_type: zero               # padding type [zero/reflect]
 style_encoder:
   ch: 16                       # channel multiplier
-  n_intermediates: 2           # number of intermediate layers # TODO : 2 -> 6
+  n_intermediates: 5           # number of intermediate layers # TODO : 2 -> 6
   activation: relu             # activation function [relu/lrelu/prelu/selu/tanh]
   D: 64                        # output dimension, same as style dimension
 dis:
   ch: 32                       # channel multiplier
-  n_intermediates: 2           # number of intermediate layers # TODO : 2 -> 6
+  n_intermediates: 4           # number of intermediate layers # TODO : 2 -> 6
   activation: lrelu            # activation function [relu/lrelu/prelu/selu/tanh]
   D: 1                         # output dimension, 1 for binary classification
 

@@ -11,8 +11,26 @@ def gather_domain(src, domain_index):  # only works at torch.gather(..., dim=1)
     return torch.gather(src, 1, domain_index.long())
 
 
+# class StarGANGenerator(nn.Module):
+#     def __init__(self, config):
+#         super(Generator, self).__init__()
+#
+#         self.config = config
+#         num_domain = config['num_domain']
+#         dim_style = config['dim_style']
+#
+#         self.generator = Generator(config['gen'])  # 29072960
+#         self.mapping_network = MappingNetwork(config['mapping_network'], num_domain, dim_style)
+#         self.style_encoder = StyleEncoder(config['style_encoder'], num_domain, dim_style)
+#
+#     def generate_from_random_noise(self, real, random_noise, domain):
+#         self.mapping_network(random_noise, domain)
+#
+#     def generate_from_reference(self, real, reference, domain):
+
+
 class Generator(nn.Module):
-    def __init__(self, config_gen):  # *a, **k : norm, activation, pad_type
+    def __init__(self, config_gen):
         super(Generator, self).__init__()
 
         dim = config_gen['dim']  # 32
@@ -110,7 +128,7 @@ class StyleEncoder(nn.Module):
                     nn.AvgPool2d(2)
                 ]
 
-        activation_height = 128 // 2 ** n_intermediates
+        activation_height = 128 // 2 ** n_intermediates  # TODO
         layers += [
             nn.LeakyReLU(0.1, inplace=True),
             Conv2dBlock(ch, ch, activation_height, 1, 0, 'none', 'lrelu'),
@@ -186,13 +204,16 @@ if __name__ == '__main__':
     random_domain = torch.randint(num_domain, (batch_size, 1, 1))
 
     style_mapped = mapping_network(random_noise, random_domain)
-    fake = gen(dummy_img, style_mapped)
-    style = style_encoder(dummy_img, domain)
-    logit_real = discriminator(dummy_img, domain)
-    logit_fake = discriminator(fake, random_domain)
+    # fake = gen(dummy_img, style_mapped)
+    # style = style_encoder(dummy_img, domain)
+    # logit_real = discriminator(dummy_img, domain)
+    # logit_fake = discriminator(fake, random_domain)
+    #
+    # print(style_mapped.shape, random_noise.shape, random_domain.shape)
+    # print(fake.shape, style.shape, style_mapped.shape, logit_real.shape, logit_fake.shape)
+    #
+    # # print(count_params(gen), count_params(mapping_network), count_params(style_encoder), count_params(discriminator))
+    # print()
 
-    print(style_mapped.shape, random_noise.shape, random_domain.shape)
-    print(fake.shape, style.shape, style_mapped.shape, logit_real.shape, logit_fake.shape)
-
-    # print(count_params(gen), count_params(mapping_network), count_params(style_encoder), count_params(discriminator))
-    print()
+    print(mapping_network)
+    print(mapping_network.parameters())

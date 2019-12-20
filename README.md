@@ -6,3 +6,13 @@
 
 
 ## Now on dev and training.. 
+
+## starGAN v2
+
+- Model Architecture
+
+![](assets/paper/architecture.png)
+
+- Results
+
+![](assets/paper/result.png)

@@ -1,6 +1,7 @@
 from torch import nn
 import torch
 import torch.nn.functional as F
+import math
 
 
 # ------------------------------------------------------------
@@ -418,10 +419,16 @@ class AdaptiveInstanceNormWithAffineTransform(nn.Module):
         super().__init__()
 
         self.norm = nn.InstanceNorm2d(in_channel)
-        self.style = EqualLinear(style_dim, in_channel * 2)
+        self.style = nn.Linear(style_dim, in_channel*2, bias=True)
+        # self.style = EqualLinear(style_dim, in_channel * 2)
+        #
+        self.style.bias.data[:in_channel] = 1
+        self.style.bias.data[in_channel:] = 0
 
-        self.style.linear.bias.data[:in_channel] = 1
-        self.style.linear.bias.data[in_channel:] = 0
+        # TODO
+        # self.style.fc.weight.requires_grad = False
+        # self.style.fc.bias.requires_grad = False
+
 
     def forward(self, input):
         out = self.norm(input)
@@ -457,7 +464,7 @@ class EqualLR:
         weight = getattr(module, self.name + '_orig')
         fan_in = weight.data.size(1) * weight.data[0][0].numel()
 
-        return weight * sqrt(2 / fan_in)
+        return weight * math.sqrt(2 / fan_in)
 
     @staticmethod
     def apply(module, name):

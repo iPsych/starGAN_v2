@@ -24,6 +24,9 @@ def main(config, dataset_root, resume):
 
     # model
     model = StarGAN(config, train_loader, test_loader)
+    print(model.optimizer_g)
+
+    return
     if not resume:
         model.train_starGAN(init_epoch=0)
     else:
