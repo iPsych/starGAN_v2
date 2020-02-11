@@ -221,22 +221,22 @@ class StarGAN(nn.Module):
         self.loss['cyc_loss'] = cyc_loss.item()
 
         # TODO : refactoring
-        # self.real = real
-        # self.real_domain = real_domain
-        # self.random_noise = random_noise
-        # self.random_domain = random_domain
+        self.real = real
+        self.real_domain = real_domain
+        self.random_noise = random_noise
+        self.random_domain = random_domain
 
-        # self.random_noise1 = random_noise1
-        # self.random_noise2 = random_noise2
-        # self.random_domain1 = random_domain1
+        self.random_noise1 = random_noise1
+        self.random_noise2 = random_noise2
+        self.random_domain1 = random_domain1
 
-        # self.logit_fake_g = logit_fake
+        self.logit_fake_g = logit_fake
 
-        # self.style_fake = style_fake
-        # self.style_real = style_real
-        # self.fake = fake
-        # self.recon = image_recon
-        # self.style_recon = style_recon
+        self.style_fake = style_fake
+        self.style_real = style_real
+        self.fake = fake
+        self.recon = image_recon
+        self.style_recon = style_recon
 
     def train_starGAN(self, init_epoch):
         d_step, g_step = self.config['d_step'], self.config['g_step']

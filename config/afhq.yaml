@@ -5,7 +5,7 @@ image_save_iter: 3000          # How often do you want to save output images dur
 
 # optimization options
 max_iter: 100000               # maximum number of training iterations
-batch_size: 2                  # batch size
+batch_size: 8                  # batch size
 batch_size_test: 4             # batch size for test samples
 optimizer: Adam                # optimizer
 beta1: 0                       # Adam parameter
