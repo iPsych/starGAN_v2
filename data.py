@@ -1,3 +1,5 @@
+import glob
+
 from torch.utils import data
 from torch.utils.data import DataLoader
 from torchvision import transforms
@@ -7,8 +9,7 @@ import os.path
 import numpy as np
 
 """
-1. img, domain 이 나오게
-2. test set은 domain 별로 정리되서 나오게
+test set은 domain 별로 정리되서 나오게
 """
 
 
@@ -162,6 +163,40 @@ class ImageFolder(data.Dataset):
         return len(self.imgs)
 
 
+class MultiDomainImageFolder(data.Dataset):
+    def __init__(self, img_path, mode, transform, loader=default_loader):
+        self.img_path = img_path
+        self.mode = mode
+        self.transform = transform
+        self.loader = loader
+        assert mode == 'train' or mode == 'test'
+
+        self.domains = os.listdir(os.path.join(img_path, mode))
+        self.main_data = []
+        self.asd = []
+
+        self.distribute_data()
+        self.size = len(self.main_data)
+
+    def distribute_data(self):
+        for n, domain in enumerate(self.domains):
+            imgs = glob.glob(os.path.join(self.img_path, self.mode, domain, '*'))
+            for img in imgs:
+                if is_image_file(img):
+                    self.main_data.append([img, np.array(n).reshape(-1, 1)])
+
+    def __getitem__(self, index):
+        img_path, domain = self.main_data[index]
+        img = self.loader(img_path)
+        if self.transform:
+            img = self.transform(img)
+
+        return img, domain, img_path
+
+    def __len__(self):
+        return self.size
+
+
 class UnpairedImageFolderWithAttr(data.Dataset):
     def __init__(self, img_path, attr_file_name, domain_attrs, mode, transform, loader=default_loader):
         self.img_path = img_path
@@ -226,8 +261,6 @@ def get_transform(crop_size, resize, is_flip):
 
 def get_data_loader(config, dataset_root, shuffle=True, is_train=True):
     img_path = os.path.join(dataset_root, config['img_path'])
-    attr_file_name = os.path.join(dataset_root, config['attr_file'])
-    target_attrs = config['target_attrs']
     mode = 'train' if is_train else 'test'
 
     is_flip = config['is_flip']
@@ -239,26 +272,26 @@ def get_data_loader(config, dataset_root, shuffle=True, is_train=True):
 
     transform = get_transform(crop_size, re_size, is_flip)
 
-    dataset = UnpairedImageFolderWithAttr(img_path, attr_file_name, target_attrs, mode, transform)
+    dataset = MultiDomainImageFolder(img_path, mode, transform)
     loader = DataLoader(dataset, batch_size, shuffle, drop_last=True, num_workers=num_workers)
     return loader
 
 
 if __name__ == '__main__':
     from utils import get_config
-    from custom._visualizer import show
-    from custom._utils_torch import show_batch_torch
+    from common.visualizer import show
+    from common.utils_torch import show_batch_torch
 
-    config = './config/celeba_HQ.yaml'
-    if True:
+    config = './config/afhq.yaml'
+    if False:
         dataset_root = '/mnt/disks/sdb/datasets'
     else:
         dataset_root = '/Users/bochan/_datasets'
-
     config = get_config(config)
-    train_loader = get_data_loader(config, dataset_root, is_train=True)
-    # test_loader = get_data_loader(config, dataset_root, is_train=False)
 
-    img, domain, _ = next(iter(train_loader))
+    loader = get_data_loader(config, dataset_root)
+
+    img, domain, _ = next(iter(loader))
     print(img.shape)
-    print(show_batch_torch(img))
+    print(domain)
+    print(domain.shape, domain)

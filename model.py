@@ -2,31 +2,13 @@ import torch
 from torch import nn
 from torch.autograd import Variable
 
-from custom._layers import Conv2dBlock, LinearBlock, \
+from common.layers import Conv2dBlock, LinearBlock, \
     ResBlockPreActivationWithAvgPool, ResBlockPreActivation, ResBlockPreActivationWithUpsample
 
 
 def gather_domain(src, domain_index):  # only works at torch.gather(..., dim=1)
     domain_index = domain_index.repeat(1, 1, src.size(-1))
     return torch.gather(src, 1, domain_index.long())
-
-
-# class StarGANGenerator(nn.Module):
-#     def __init__(self, config):
-#         super(Generator, self).__init__()
-#
-#         self.config = config
-#         num_domain = config['num_domain']
-#         dim_style = config['dim_style']
-#
-#         self.generator = Generator(config['gen'])  # 29072960
-#         self.mapping_network = MappingNetwork(config['mapping_network'], num_domain, dim_style)
-#         self.style_encoder = StyleEncoder(config['style_encoder'], num_domain, dim_style)
-#
-#     def generate_from_random_noise(self, real, random_noise, domain):
-#         self.mapping_network(random_noise, domain)
-#
-#     def generate_from_reference(self, real, reference, domain):
 
 
 class Generator(nn.Module):
@@ -71,10 +53,6 @@ class Generator(nn.Module):
 
     def forward(self, x, style):
         self.assign_adain_params_features(style)
-        # for layer in self.layers:
-        #     x = layer(x)
-        #     print(x.shape)
-        # return x
         return self.model(x)
 
 
@@ -94,25 +72,26 @@ class MappingNetwork(nn.Module):
         layers += [LinearBlock(input_dim, dim, norm, activation)]
         for i in range(n_mlp):  # 6
             layers += [LinearBlock(dim, dim, norm, activation)]
-        layers += [LinearBlock(dim, num_domain * dim_style, norm='none', activation='none')]
+        layers += [LinearBlock(dim, self.num_domain * self.dim_style, norm='none', activation='none')]
 
         self.layers = layers
         self.model = nn.Sequential(*layers)
 
     def forward(self, x, target_domain):
-        x = self.model(x).view(-1, self.num_domain, self.dim_style)
-        return gather_domain(x, target_domain)  # (batch, domain, 64) -> (batch, 1, 64)
+        batch_size = x.size(0)
+        x = self.model(x).view(batch_size, self.num_domain, self.dim_style)
+        return gather_domain(x, target_domain)  # (batch, n_domain, 64) -> (batch, 1, 64)
 
 
 class StyleEncoder(nn.Module):
-    def __init__(self, config_what, num_domain, dim_style):
+    def __init__(self, config_enc, num_domain, img_size):
         super(StyleEncoder, self).__init__()
 
-        ch = config_what['ch']
-        n_intermediates = config_what['n_intermediates']
-        activation = config_what['activation']
+        ch = config_enc['ch']
+        n_intermediates = config_enc['n_intermediates']
+        activation = config_enc['activation']
         self.num_domain = num_domain
-        self.dim_style = dim_style
+        self.dim_style = config_enc['output_dim']
 
         layers = []
         layers += [Conv2dBlock(3, ch, 1, 1, 0, 'none', 'none', bias=False)]
@@ -128,32 +107,31 @@ class StyleEncoder(nn.Module):
                     nn.AvgPool2d(2)
                 ]
 
-        activation_height = 128 // 2 ** n_intermediates  # TODO
+        activation_height = img_size // 2 ** n_intermediates
         layers += [
             nn.LeakyReLU(0.1, inplace=True),
             Conv2dBlock(ch, ch, activation_height, 1, 0, 'none', 'lrelu'),
-            Conv2dBlock(ch, num_domain * dim_style, 1, 1, 0, 'none', 'none')
+            Conv2dBlock(ch, self.num_domain * self.dim_style, 1, 1, 0, 'none', 'none')
         ]
 
         self.layers = layers
         self.model = nn.Sequential(*layers)
 
     def forward(self, x, target_domain):
-        # print('style encoder', x.shape)
-        x = self.model(x).view(-1, self.num_domain, self.dim_style)
-        # print('style encoder', x.shape)
-        return gather_domain(x, target_domain)  # (batch, domain, 64) -> (batch, 1, 64)
+        batch_size = x.size(0)
+        x = self.model(x).view(batch_size, self.num_domain, self.dim_style)
+        return gather_domain(x, target_domain)  # (batch, n_domain, 64) -> (batch, 1, 64)
 
 
 class Discriminator(nn.Module):
-    def __init__(self, config_what, num_domain, dim_style):
+    def __init__(self, config_dis, num_domain, img_size):
         super(Discriminator, self).__init__()
 
-        ch = config_what['ch']
-        n_intermediates = config_what['n_intermediates']
-        activation = config_what['activation']
+        ch = config_dis['ch']
+        n_intermediates = config_dis['n_intermediates']
+        activation = config_dis['activation']
         self.num_domain = num_domain
-        self.dim_style = dim_style
+        self.dim_style = config_dis['output_dim']
 
         layers = []
         layers += [Conv2dBlock(3, ch, 1, 1, 0, 'none', 'none', bias=False)]
@@ -169,33 +147,35 @@ class Discriminator(nn.Module):
                     nn.AvgPool2d(2)
                 ]
 
-        activation_height = 128 // 2 ** n_intermediates
+        activation_height = img_size // 2 ** n_intermediates
         layers += [
             nn.LeakyReLU(0.1, inplace=True),
             Conv2dBlock(ch, ch, activation_height, 1, 0, 'none', 'lrelu'),
-            Conv2dBlock(ch, num_domain * dim_style, 1, 1, 0, 'none', 'none')
+            Conv2dBlock(ch, self.num_domain * self.dim_style, 1, 1, 0, 'none', 'none')
         ]
 
         self.layers = layers
         self.model = nn.Sequential(*layers)
 
     def forward(self, x, target_domain):
-        x = self.model(x).view(-1, self.num_domain, self.dim_style)
-        return gather_domain(x, target_domain)  # (batch, domain, 1) -> (batch, 1, 1)
+        batch_size = x.size(0)
+        x = self.model(x).view(batch_size, self.num_domain, self.dim_style)
+        return gather_domain(x, target_domain)  # (batch, n_domain, 1) -> (batch, 1, 1)
 
 
 if __name__ == '__main__':
-    from custom._utils_torch import count_params
+    from common.utils_torch import count_params
     from utils import get_config
 
-    config = get_config('./config/celeba_HQ.yaml')
-    num_domain = config['num_domain']
+    config = get_config('./config/afhq.yaml')
     dim_style = config['dim_style']
+    img_size = config['re_size']
+    num_domain = 3
 
     gen = Generator(config['gen'])  # 29072960
     mapping_network = MappingNetwork(config['mapping_network'], num_domain, dim_style)
-    style_encoder = StyleEncoder(config['style_encoder'], num_domain, dim_style)
-    discriminator = Discriminator(config['dis'], num_domain, 1)
+    style_encoder = StyleEncoder(config['style_encoder'], num_domain, dim_style, img_size)
+    discriminator = Discriminator(config['dis'], num_domain, 1, img_size)
 
     batch_size, height = config['batch_size'], config['re_size']
     random_noise = torch.randn(batch_size, 16)
@@ -204,16 +184,9 @@ if __name__ == '__main__':
     random_domain = torch.randint(num_domain, (batch_size, 1, 1))
 
     style_mapped = mapping_network(random_noise, random_domain)
-    # fake = gen(dummy_img, style_mapped)
-    # style = style_encoder(dummy_img, domain)
-    # logit_real = discriminator(dummy_img, domain)
-    # logit_fake = discriminator(fake, random_domain)
-    #
-    # print(style_mapped.shape, random_noise.shape, random_domain.shape)
-    # print(fake.shape, style.shape, style_mapped.shape, logit_real.shape, logit_fake.shape)
-    #
-    # # print(count_params(gen), count_params(mapping_network), count_params(style_encoder), count_params(discriminator))
-    # print()
+    fake = gen(dummy_img, style_mapped)
+    style = style_encoder(dummy_img, domain)
+    logit_real = discriminator(dummy_img, domain)
+    logit_fake = discriminator(fake, random_domain)
 
-    print(mapping_network)
-    print(mapping_network.parameters())
+    print(style_mapped.size(), fake.size(), style.shape, logit_real.shape, logit_fake.shape)

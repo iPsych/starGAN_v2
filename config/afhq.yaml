@@ -5,7 +5,7 @@ image_save_iter: 3000          # How often do you want to save output images dur
 
 # optimization options
 max_iter: 100000               # maximum number of training iterations
-batch_size: 8                  # batch size
+batch_size: 2                  # batch size
 batch_size_test: 4             # batch size for test samples
 optimizer: Adam                # optimizer
 beta1: 0                       # Adam parameter
@@ -19,45 +19,42 @@ lr_F: 0.000001                 # initial learning rate for mapping network
 #step_size: 1000               # how often to decay learning rate  # TODO : check Olr decay details
 #init_decay_step: 5000         #
 #gamma: 0.99999                # how much to decay learning rate
-w_style: 1                     # weight of style reconstruction loss
+w_style: 0.3                   # weight of style reconstruction loss
 w_ds: 1                        # weight of style diversification loss
-w_cyc: 1                       # weight of cycle consistency loss
+w_cyc: 0.1                     # weight of cycle consistency loss
 w_regul: 1                     # weight of non-saturating gan R1 regularization term
 
 # model options
 gan_type: bce                  # GAN loss [bce/lsgan/wgan]
-target_attrs: "Male"
-num_domain: 2                  # number of domains
 dim_style: 64                  # style dimension
 gen:
   dim: 32                      # number of filters in the bottommost layer
-  n_downs: 3                   # number of downsampling layers TODO : 2 -> 4
-  n_intermediates: 4           # number of intermediate layers TODO : 2 -> 4
+  n_downs: 4                   # number of downsampling layers
+  n_intermediates: 4           # number of intermediate layers
   activation: relu             # activation function [relu/lrelu/prelu/selu/tanh]
   pad_type: zero               # padding type [zero/reflect]
 mapping_network:
   dim_latent: 16               # dimension of latent vector
   dim: 512                     # number of filters in the bottommost layer
-  n_mlp: 6                     # number of mlp layers TODO : 2 -> 6
+  n_mlp: 6                     # number of mlp layers
   norm: none                   # normalization layer [none/bn/in/ln/adain/adain_affine]
   activation: relu             # activation function [relu/lrelu/prelu/selu/tanh]
   pad_type: zero               # padding type [zero/reflect]
 style_encoder:
   ch: 16                       # channel multiplier
-  n_intermediates: 5           # number of intermediate layers # TODO : 2 -> 6
+  n_intermediates: 6           # number of intermediate layers
   activation: relu             # activation function [relu/lrelu/prelu/selu/tanh]
   output_dim: 64                        # output dimension, same as style dimension
 dis:
   ch: 32                       # channel multiplier
-  n_intermediates: 4           # number of intermediate layers # TODO : 2 -> 6
+  n_intermediates: 6           # number of intermediate layers
   activation: lrelu            # activation function [relu/lrelu/prelu/selu/tanh]
   output_dim: 1                         # output dimension, 1 for binary classification
 
 # data load options
 is_flip: True                             # whether horizontally flipping images when reading images
 num_workers: 8                            # number of data loading threads
-crop_size: 178                            # random crop image of this height    # TODO :
-re_size: 128                              # first resize the shortest image side to this size  # TODO : 128 -> 256
-img_path: celeba/images                   # path of image saving
-attr_file: celeba/list_attr_celeba.txt    # path of model saving
-save_name: celeba                         # unique name for save folder
+crop_size: 280                            # random crop image of this height    # TODO : arbitrary
+re_size: 256                              # resize the shortest image side to this size
+img_path: afhq                            # path of image saving
+save_name: afhq                           # unique name for save folder

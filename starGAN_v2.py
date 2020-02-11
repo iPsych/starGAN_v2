@@ -9,8 +9,8 @@ import torch.nn.functional as F
 
 from utils import get_scheduler, weights_init
 from model import Generator, StyleEncoder, MappingNetwork, Discriminator
-from custom._utils_torch import reset_gradients, reshape_batch_torch, show_batch_torch
-from custom._visualizer import preprocess, show, clear_jupyter_console
+from common.utils_torch import reset_gradients, reshape_batch_torch, show_batch_torch
+from common.visualizer import preprocess, show, clear_jupyter_console
 
 
 class StarGAN(nn.Module):
@@ -43,6 +43,7 @@ class StarGAN(nn.Module):
         self.batch_size = config['batch_size']
         self.gan_type = config['gan_type']
         self.max_iter = config['max_iter']
+        self.img_size = config['re_size']
 
         self.path_sample = os.path.join('./results/samples', config['save_name'])
         self.path_model = os.path.join('./results/models', config['save_name'])
@@ -52,14 +53,14 @@ class StarGAN(nn.Module):
         self.w_cyc = config['w_cyc']
         self.w_regul = config['w_regul']
 
-        self.num_domain = config['num_domain']
+        self.num_domain = len(train_loader.dataset.domains)
         self.dim_style = config['dim_style']
         self.dim_latent = config['mapping_network']['dim_latent']
 
         self.generator = Generator(config['gen'])  # 29072960
-        self.style_encoder = StyleEncoder(config['style_encoder'], self.num_domain, self.dim_style)
+        self.style_encoder = StyleEncoder(config['style_encoder'], self.num_domain, self.img_size)
         self.mapping_network = MappingNetwork(config['mapping_network'], self.num_domain, self.dim_style)
-        self.discriminator = Discriminator(config['dis'], self.num_domain, 1)
+        self.discriminator = Discriminator(config['dis'], self.num_domain, self.img_size)
 
         self.optimizer_d = torch.optim.Adam(self.discriminator.parameters(), lr, (beta1, beta2))
         params_g = list(self.generator.parameters()) + list(self.style_encoder.parameters())
@@ -119,7 +120,7 @@ class StarGAN(nn.Module):
         return reg
 
     def calc_gp(self, real_images, fake_images):  # TODO :
-        raise DeprecationWarning("")
+        raise NotImplementedError("")
         alpha = torch.rand(real_images.size(0), 1, 1, 1).to(self.device)
         interpolated = (alpha * real_images + ((1 - alpha) * fake_images)).requires_grad_(True)
         prob_interpolated, _ = self.discriminator(interpolated)
@@ -151,7 +152,7 @@ class StarGAN(nn.Module):
 
     def update_d(self, real, real_domain, random_noise, random_domain):
         reset_gradients([self.optimizer_g, self.optimizer_d])
-        real.requires_grad_()  # TODO :
+        real.requires_grad_()
 
         style_mapped = self.mapping_network(random_noise, random_domain)
         fake = self.generator(real, style_mapped)
@@ -184,9 +185,9 @@ class StarGAN(nn.Module):
 
         style_fake = self.mapping_network(random_noise, random_domain)
         style_real = self.style_encoder(real, real_domain)
-        fake = self.generator(real, style_fake)  # style_fake.detach()
-        style_recon = self.style_encoder(fake, random_domain)  # fake.detach()
-        image_recon = self.generator(fake, style_real)  # style_real.detach()
+        fake = self.generator(real, style_fake)
+        style_recon = self.style_encoder(fake, random_domain)
+        image_recon = self.generator(fake, style_real)
 
         # Adversarial
         logit_fake = self.discriminator(fake, random_domain)
@@ -197,24 +198,22 @@ class StarGAN(nn.Module):
 
         # Style diversification
         random_noise1 = torch.randn(self.batch_size, self.dim_latent).to(self.device)
-        random_noise2 = torch.randn(self.batch_size, self.dim_latent).to(self.device)  # TODO : 재활용 할까?
+        random_noise2 = torch.randn(self.batch_size, self.dim_latent).to(self.device)
         random_domain1 = torch.randint(self.num_domain, (self.batch_size, 1, 1)).to(self.device)
 
         s1 = self.mapping_network(random_noise1, random_domain1)
         s2 = self.mapping_network(random_noise2, random_domain1)
-        fake1 = self.generator(real, s1)  # s1.detach()
-        fake2 = self.generator(real, s2)  # s2.detach()
+        fake1 = self.generator(real, s1)
+        fake2 = self.generator(real, s2)
 
         ds_loss = - self.criterion_l1(fake1, fake2) * self.w_ds
 
         # Cycle consistency
         cyc_loss = self.criterion_l1(real, image_recon) * self.w_cyc
 
-        loss_g = adv_g + cyc_loss + style_recon_loss  # + + ds_loss
+        loss_g = adv_g + cyc_loss + style_recon_loss + ds_loss
         loss_g.backward()
         self.optimizer_g.step()
-        # self.optimizer_style.step()
-        # self.optimizer_F.step()
 
         self.loss['adv_g'] = adv_g.item()
         self.loss['style_recon_loss'] = style_recon_loss.item()
@@ -222,22 +221,22 @@ class StarGAN(nn.Module):
         self.loss['cyc_loss'] = cyc_loss.item()
 
         # TODO : refactoring
-        self.real = real
-        self.real_domain = real_domain
-        self.random_noise = random_noise
-        self.random_domain = random_domain
+        # self.real = real
+        # self.real_domain = real_domain
+        # self.random_noise = random_noise
+        # self.random_domain = random_domain
 
-        self.random_noise1 = random_noise1
-        self.random_noise2 = random_noise2
-        self.random_domain1 = random_domain1
+        # self.random_noise1 = random_noise1
+        # self.random_noise2 = random_noise2
+        # self.random_domain1 = random_domain1
 
-        self.logit_fake_g = logit_fake
+        # self.logit_fake_g = logit_fake
 
-        self.style_fake = style_fake
-        self.style_real = style_real
-        self.fake = fake
-        self.recon = image_recon
-        self.style_recon = style_recon
+        # self.style_fake = style_fake
+        # self.style_real = style_real
+        # self.fake = fake
+        # self.recon = image_recon
+        # self.style_recon = style_recon
 
     def train_starGAN(self, init_epoch):
         d_step, g_step = self.config['d_step'], self.config['g_step']
@@ -340,7 +339,6 @@ class StarGAN(nn.Module):
     def generate_test_samples(self, save):
         os.makedirs(self.path_sample, exist_ok=True)
 
-        # self.eval_mode_all()
         with torch.no_grad():
             reference, reference_domain, _ = next(iter(self.test_loader))
             reference, reference_domain = reference.to(self.device), reference_domain.to(self.device)

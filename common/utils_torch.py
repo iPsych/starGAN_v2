@@ -1,4 +1,4 @@
-from custom._visualizer import denormalize, show, show_batch, reshape_batch
+from common.visualizer import denormalize, show, show_batch, reshape_batch
 
 
 def torch2numpy(tensor, is_img=True):
