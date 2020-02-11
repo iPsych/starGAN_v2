@@ -43,7 +43,7 @@ class StarGAN(nn.Module):
         self.batch_size = config['batch_size']
         self.gan_type = config['gan_type']
         self.max_iter = config['max_iter']
-        self.img_size = config['re_size']
+        self.img_size = config['crop_size']
 
         self.path_sample = os.path.join('./results/samples', config['save_name'])
         self.path_model = os.path.join('./results/models', config['save_name'])

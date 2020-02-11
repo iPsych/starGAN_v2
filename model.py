@@ -169,7 +169,7 @@ if __name__ == '__main__':
 
     config = get_config('./config/afhq.yaml')
     dim_style = config['dim_style']
-    img_size = config['re_size']
+    img_size = config['crop_size']
     num_domain = 3
 
     gen = Generator(config['gen'])  # 29072960

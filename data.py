@@ -246,8 +246,8 @@ class UnpairedImageFolderWithAttr(data.Dataset):
 
 def get_transform(crop_size, resize, is_flip):
     transform_list = []
-    transform_list += [transforms.CenterCrop(crop_size)]
     transform_list += [transforms.Resize(resize)]
+    transform_list += [transforms.CenterCrop(crop_size)]
 
     if is_flip:
         transform_list += [transforms.RandomHorizontalFlip()]

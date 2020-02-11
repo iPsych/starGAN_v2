@@ -54,7 +54,7 @@ dis:
 # data load options
 is_flip: True                             # whether horizontally flipping images when reading images
 num_workers: 8                            # number of data loading threads
-crop_size: 280                            # random crop image of this height    # TODO : arbitrary
-re_size: 256                              # resize the shortest image side to this size
+re_size: 280                              # first resize the shortest image side to this size
+crop_size: 256                            # random crop image of this height    # TODO : arbitrary
 img_path: afhq                            # path of image saving
 save_name: afhq                           # unique name for save folder
