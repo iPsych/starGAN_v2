@@ -7,42 +7,19 @@ import math
 # ------------------------------------------------------------
 # --- Model Structures Template
 # ------------------------------------------------------------
-class ResBlock(nn.Module):
-    def __init__(self, dim, kernel_size=3, stride=1, padding=1, norm='in', activation='relu', pad_type='zero'):
-        super(ResBlock, self).__init__()
-
-        layers = []
-        layers += [
-            Conv2dBlock(dim, dim, kernel_size, stride, padding, norm=norm, activation=activation, pad_type=pad_type)]
-        layers += [Conv2dBlock(dim, dim, kernel_size, 1, padding, norm=norm, activation='none', pad_type=pad_type)]
-        self.model = nn.Sequential(*layers)
-
-    def forward(self, x):
-        residual = x
-
-        logit = self.model(x)
-        logit += residual
-        return logit
-
-
 # src: https://www.pyimagesearch.com/wp-content/uploads/2017/03/imagenet_resnet_identity.png
 class ResBlockPreActivation(nn.Module):
     def __init__(self, dim, kernel_size=3, stride=1, padding=1, norm='in', activation='relu', pad_type='zero'):
         super(ResBlockPreActivation, self).__init__()
 
-        layers = []
-        layers += [
-            Conv2dBlockPreActivation(dim, dim, kernel_size, stride, padding, norm=norm, activation=activation,
-                                     pad_type=pad_type)]
-        layers += [Conv2dBlockPreActivation(dim, dim, kernel_size, 1, padding, norm=norm, activation=activation,
-                                            pad_type=pad_type)]
-        self.model = nn.Sequential(*layers)
+        self.conv1 = Conv2dBlockPreActivation(dim, dim, kernel_size, stride, padding, norm, activation, pad_type)
+        self.conv2 = Conv2dBlockPreActivation(dim, dim, kernel_size, 1, padding, norm, activation, pad_type)
 
     def forward(self, x):
         residual = x
-        logit = self.model(x)
-        logit += residual
-        return logit
+        out = self.conv1(x)
+        out = self.conv2(out)
+        return out + residual
 
 
 class ResBlockPreActivationWithAvgPool(nn.Module):
@@ -50,22 +27,19 @@ class ResBlockPreActivationWithAvgPool(nn.Module):
                  pad_type='zero'):
         super(ResBlockPreActivationWithAvgPool, self).__init__()
 
-        layers = []
-        layers += [Conv2dBlockPreActivation(input_dim, output_dim, kernel_size, stride, padding, norm=norm,
-                                            activation=activation, pad_type=pad_type)]
-        layers += [
-            Conv2dBlockPreActivation(output_dim, output_dim, kernel_size, 1, padding, norm=norm, activation=activation,
-                                     pad_type=pad_type)]
-
-        self.model = nn.Sequential(*layers)
-        self.residual = Conv2dBlock(input_dim, output_dim, kernel_size, 1, 1, pad_type=pad_type)
         self.avgPool = nn.AvgPool2d(2)
+        self.conv1 = Conv2dBlockPreActivation(input_dim, output_dim, kernel_size, stride, padding, norm, activation,
+                                              pad_type)
+        self.conv2 = Conv2dBlockPreActivation(output_dim, output_dim, kernel_size, 1, padding, norm, activation,
+                                              pad_type)
+
+        self.residual = Conv2dBlock(input_dim, output_dim, kernel_size, 1, 1, pad_type=pad_type)
 
     def forward(self, x):
-        logit = self.model(x)
+        out = self.conv1(x)
+        out = self.conv2(out)
         residual = self.residual(x)
-        logit = self.avgPool(logit + residual)
-        return logit
+        return self.avgPool(out + residual)
 
 
 class ResBlockPreActivationWithUpsample(nn.Module):
@@ -75,128 +49,85 @@ class ResBlockPreActivationWithUpsample(nn.Module):
 
         self.upsample = Upsample(scale_factor=2, mode='nearest')
 
-        layers = []
-        layers += [Conv2dBlockPreActivation(input_dim, output_dim, kernel_size, stride, padding, norm=norm,
-                                            activation=activation, pad_type=pad_type)]
-        layers += [
-            Conv2dBlockPreActivation(output_dim, output_dim, kernel_size, 1, padding, norm=norm, activation=activation,
-                                     pad_type=pad_type)]
+        self.conv1 = Conv2dBlockPreActivation(input_dim, output_dim, kernel_size, stride, padding, norm, activation,
+                                              pad_type)
+        self.conv2 = Conv2dBlockPreActivation(output_dim, output_dim, kernel_size, 1, padding, norm, activation,
+                                              pad_type)
 
-        self.model = nn.Sequential(*layers)
         self.residual = Conv2dBlock(input_dim, output_dim, kernel_size, 1, 1, pad_type=pad_type)
 
     def forward(self, x):
         x = self.upsample(x)
-        logit = self.model(x)
+        out = self.conv1(x)
+        out = self.conv2(out)
         residual = self.residual(x)
-        logit += residual
-        return logit
+        return out + residual
 
 
 # ------------------------------------------------------------
 # --- Basic Computation Layers
 # ------------------------------------------------------------
 class LinearBlock(nn.Module):
-    def __init__(self, input_dim, output_dim, norm='none', activation='relu', bias=False):
+    def __init__(self, input_dim, output_dim, norm='none', activation='relu'):
         super(LinearBlock, self).__init__()
-        # initialize fully connected layer
-        if norm == 'sn':
-            self.fc = SpectralNorm(nn.Linear(input_dim, output_dim, bias=bias))
-        else:
-            self.fc = nn.Linear(input_dim, output_dim, bias=bias)
 
+        self.fc = nn.Linear(input_dim, output_dim, bias=norm == "none")
+        self.fc.nonlinearity = activation
         self.norm = _normalization1d(norm, output_dim)
-
-        self.activation = _activation(activation)
+        self.non_linear = _activation(activation)
 
     def forward(self, x):
         out = self.fc(x)
-        if self.norm:
-            out = self.norm(out)
-        if self.activation:
-            out = self.activation(out)
+        out = self.norm(out)
+        out = self.non_linear(out)
         return out
 
 
 class Conv2dBlock(nn.Module):
     def __init__(self, input_dim, output_dim, kernel_size, stride,
-                 padding=0, norm='none', activation='none', pad_type='zero', bias=False):
+                 padding=0, norm='none', activation='none', pad_type='zero'):
         super(Conv2dBlock, self).__init__()
 
         # downsampling : 7, 2, 3 / 6, 2, 2 / 5, 2, 2 / 4, 2, 1 / 3, 2, 1
         # maintain     : 7, 1, 3 / 6 X / 5, 1, 2 / 4 X / 3, 1, 1
 
-        layers = []
-        if padding:
-            layers += [_padding(pad_type, padding)]  # padding
+        self.padding = Identity()
+        if padding != 0:
+            self.padding = _padding(pad_type, padding)
+        self.net = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=norm == "none")
+        self.net.nonlinearity = activation
 
-        # conv method
-        if norm == 'sn':
-            layers += [SpectralNorm(nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=bias))]
-        else:
-            layers += [nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=bias)]
-            layers += [_normalization2d(norm, output_dim)]  # normalizaion
-
-        layers += [_activation(activation)]  # activation
-
-        self.model = nn.Sequential(*layers)
+        self.norm = _normalization2d(norm, output_dim)
+        self.non_linear = _activation(activation)
 
     def forward(self, x):
-        return self.model(x)
+        x = self.padding(x)
+        x = self.net(x)
+        x = self.norm(x)
+        x = self.non_linear(x)
+        return x
 
 
 class Conv2dBlockPreActivation(nn.Module):
     def __init__(self, input_dim, output_dim, kernel_size, stride,
-                 padding=0, norm='none', activation='none', pad_type='zero', bias=False):
+                 padding=1, norm='none', activation='none', pad_type='zero'):
         super(Conv2dBlockPreActivation, self).__init__()
 
-        # downsampling : 7, 2, 3 / 6, 2, 2 / 5, 2, 2 / 4, 2, 1 / 3, 2, 1
-        # maintain     : 7, 1, 3 / 6 X / 5, 1, 2 / 4 X / 3, 1, 1
+        self.padding = Identity()
+        if padding != 0:
+            self.padding = _padding(pad_type, padding)
 
-        layers = []
-        if padding:
-            layers += [_padding(pad_type, padding)]
-
-        if norm == 'sn':
-            layers += [SpectralNorm(nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=bias))]
-            layers += [_activation(activation)]
-        else:
-            layers += [_normalization2d(norm, input_dim)]
-            layers += [_activation(activation)]
-            layers += [nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=bias)]
-
-        self.model = nn.Sequential(*layers)
+        self.norm = _normalization2d(norm, input_dim)
+        self.non_linear = _activation(activation)
+        self.net = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=norm == "none")
+        self.net.nonlinearity = activation
 
     def forward(self, x):
-        return self.model(x)
-
-
-class Conv2dUpsampleBlock(nn.Module):
-    def __init__(self, input_dim, output_dim, mode, kernel_size,
-                 padding=0, norm='none', activation='relu', pad_type='zero', bias=False):
-        super(Conv2dUpsampleBlock, self).__init__()
-
-        if mode == 'transpose':
-            layers = [
-                # 6, 2 / 4, 1
-                nn.ConvTranspose2d(input_dim, output_dim, kernel_size, stride=2, padding=padding, bias=bias),
-                _normalization2d(norm, output_dim),
-                _activation(activation),
-            ]
-        elif mode in ['nearest', 'linear', 'bilinear', 'trilinear']:
-            layers = [
-                # 7, 3 / 5, 2 / 3, 1
-                Upsample(scale_factor=2, mode=mode),
-                Conv2dBlock(input_dim, output_dim, kernel_size, stride=1, padding=padding, norm=norm,
-                            activation=activation, pad_type=pad_type, bias=bias)
-            ]
-        else:
-            raise NotImplementedError('Upsample layer [%s] not implemented' % mode)
-
-        self.model = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self.model(x)
+        x = self.padding(x)
+        x = self.norm(x)
+        x = self.non_linear(x)
+        x = self.net(x)
+        return x
 
 
 # --- Normalization layers
@@ -232,6 +163,29 @@ class AdaptiveInstanceNorm2d(nn.Module):
 
     def __repr__(self):
         return self.__class__.__name__ + '(' + str(self.num_features) + ')'
+
+
+# Adain with affine transformation
+class AffineLinear(nn.Linear):
+    def __init__(self, in_features, out_features, bias=True):
+        super().__init__(in_features, out_features, bias)
+        self.bias.data[:out_features // 2] = 1  # init gamma close to 1
+        self.bias.data[out_features // 2:] = 0  # init beta close to 0
+        self.is_affine = True
+        self.nonlinearity = 'none'
+
+
+class AdaptiveInstanceNormWithAffineTransform(nn.Module):
+    def __init__(self, in_channel, style_dim):
+        super().__init__()
+
+        self.norm = nn.InstanceNorm2d(in_channel)
+        self.style = AffineLinear(style_dim, in_channel * 2)
+
+    def forward(self, input):
+        out = self.norm(input)
+        out = self.gamma * out + self.beta
+        return out
 
 
 class LayerNorm(nn.Module):
@@ -411,72 +365,3 @@ def _activation(activation):
         return Identity()
     else:
         raise NotImplementedError("Unsupported activation: {}".format(activation))
-
-
-# Adain with affine transformation
-class AdaptiveInstanceNormWithAffineTransform(nn.Module):
-    def __init__(self, in_channel, style_dim):
-        super().__init__()
-
-        self.norm = nn.InstanceNorm2d(in_channel)
-        self.style = nn.Linear(style_dim, in_channel*2, bias=True)
-        # self.style = EqualLinear(style_dim, in_channel * 2)
-        #
-        self.style.bias.data[:in_channel] = 1
-        self.style.bias.data[in_channel:] = 0
-
-        # TODO
-        # self.style.fc.weight.requires_grad = False
-        # self.style.fc.bias.requires_grad = False
-
-
-    def forward(self, input):
-        out = self.norm(input)
-        out = self.gamma * out + self.beta
-        return out
-
-
-class EqualLinear(nn.Module):
-    def __init__(self, in_dim, out_dim):
-        super().__init__()
-
-        linear = nn.Linear(in_dim, out_dim)
-        linear.weight.data.normal_()
-        linear.bias.data.zero_()
-
-        self.linear = equal_lr(linear)
-
-    def forward(self, input):
-        return self.linear(input)
-
-
-def equal_lr(module, name='weight'):
-    EqualLR.apply(module, name)
-
-    return module
-
-
-class EqualLR:
-    def __init__(self, name):
-        self.name = name
-
-    def compute_weight(self, module):
-        weight = getattr(module, self.name + '_orig')
-        fan_in = weight.data.size(1) * weight.data[0][0].numel()
-
-        return weight * math.sqrt(2 / fan_in)
-
-    @staticmethod
-    def apply(module, name):
-        fn = EqualLR(name)
-
-        weight = getattr(module, name)
-        del module._parameters[name]
-        module.register_parameter(name + '_orig', nn.Parameter(weight.data))
-        module.register_forward_pre_hook(fn)
-
-        return fn
-
-    def __call__(self, module, input):
-        weight = self.compute_weight(module)
-        setattr(module, self.name, weight)

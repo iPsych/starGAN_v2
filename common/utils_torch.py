@@ -26,8 +26,8 @@ def sample_from_loader(loader, device):
         if type(data) == list:
             return [i.to(device) if i.__class__.__name__ == 'Tensor' else i for i in data]
         return data.to(device)
-    
-    
+
+
 def count_params(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 

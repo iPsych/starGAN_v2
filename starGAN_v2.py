@@ -28,7 +28,7 @@ class StarGAN(nn.Module):
         self.test_batch_size, _, self.height, self.width = self.test_source.size()
         self.save_img_cnt = 0
         self.loss = {}
-        self.repo = {}
+        self.items = {}
 
         self.iter_size = len(self.train_loader)
         self.epoch_size = config['max_iter'] // self.iter_size + 1
@@ -58,6 +58,7 @@ class StarGAN(nn.Module):
         self.dim_latent = config['mapping_network']['dim_latent']
 
         self.generator = Generator(config['gen'])  # 29072960
+        # self.generator = DummyModel(config['gen'])  # 29072960
         self.style_encoder = StyleEncoder(config['style_encoder'], self.num_domain, self.img_size)
         self.mapping_network = MappingNetwork(config['mapping_network'], self.num_domain, self.dim_style)
         self.discriminator = Discriminator(config['dis'], self.num_domain, self.img_size)
@@ -73,8 +74,8 @@ class StarGAN(nn.Module):
             }
         )
 
-        # self.scheduler_g = get_scheduler(self.optimizer_g, config['celebA'])
-        # self.scheduler_d = get_scheduler(self.optimizer_d, config['celebA'])
+        # self.scheduler_g = get_scheduler(self.optimizer_g, config)
+        # self.scheduler_d = get_scheduler(self.optimizer_d, config)
 
         self.apply(weights_init(init))
 
@@ -134,15 +135,8 @@ class StarGAN(nn.Module):
         gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
         return gradient_penalty
 
-    def assign_variables(self, real_image):
-        self.real = real_image.to(self.device)
-        random_noise = torch.randn(real_image.size(0), 16).to(self.device)
-
-        self.style_map = self.mapping_network(random_noise)
-        self.style_enc = self.style_encoder(self.real)
-
     def generate_random_nosie(self):
-        random_noise = torch.randn(self.batch_size, 16).to(self.device)
+        random_noise = torch.randn(1, self.dim_latent).to(self.device)
         random_domain = torch.randint(self.num_domain, (self.batch_size, 1, 1)).to(self.device)
         return random_noise, random_domain
 
@@ -161,14 +155,16 @@ class StarGAN(nn.Module):
         logit_real = self.discriminator(real, real_domain)
         logit_fake = self.discriminator(fake.detach(), random_domain)
 
-        adv_d_real = self.calc_adversarial_loss(logit_real, is_real=True)
-        adv_d_fake = self.calc_adversarial_loss(logit_fake, is_real=False)
+        adv_d_real = self.calc_adversarial_loss(logit_real, is_real=True)  # .contiguous()
+        adv_d_fake = self.calc_adversarial_loss(logit_fake, is_real=False)  # .contiguous()
 
         if self.config['gan_type'] == 'bce':
             regul = self.calc_r1(real, logit_real)
         elif self.config['gan_type'] == 'wgan':
             regul = self.calc_gp(real, fake)
 
+        self.adv_d_fake = adv_d_fake
+        self.adv_d_real = adv_d_real
         loss_d = adv_d_fake + adv_d_real + regul
         loss_d.backward()
         self.optimizer_d.step()
@@ -177,8 +173,8 @@ class StarGAN(nn.Module):
         self.loss['adv_d_real'] = adv_d_real.item()
         self.loss['regul'] = regul.item()
 
-        self.logit_real = logit_real
-        self.logit_fake_d = logit_fake
+        self.items["logit_real"] = logit_real
+        self.items["logit_fake_d"] = logit_fake
 
     def update_g(self, real, real_domain, random_noise, random_domain):
         reset_gradients([self.optimizer_g, self.optimizer_d])
@@ -197,8 +193,8 @@ class StarGAN(nn.Module):
         style_recon_loss = self.criterion_l1(style_fake, style_recon) * self.w_style
 
         # Style diversification
-        random_noise1 = torch.randn(self.batch_size, self.dim_latent).to(self.device)
-        random_noise2 = torch.randn(self.batch_size, self.dim_latent).to(self.device)
+        random_noise1 = torch.randn(1, self.dim_latent).to(self.device)
+        random_noise2 = torch.randn(1, self.dim_latent).to(self.device)
         random_domain1 = torch.randint(self.num_domain, (self.batch_size, 1, 1)).to(self.device)
 
         s1 = self.mapping_network(random_noise1, random_domain1)
@@ -220,23 +216,19 @@ class StarGAN(nn.Module):
         self.loss['ds_loss'] = ds_loss.item()
         self.loss['cyc_loss'] = cyc_loss.item()
 
-        # TODO : refactoring
-        self.real = real
-        self.real_domain = real_domain
-        self.random_noise = random_noise
-        self.random_domain = random_domain
-
-        self.random_noise1 = random_noise1
-        self.random_noise2 = random_noise2
-        self.random_domain1 = random_domain1
-
-        self.logit_fake_g = logit_fake
-
-        self.style_fake = style_fake
-        self.style_real = style_real
-        self.fake = fake
-        self.recon = image_recon
-        self.style_recon = style_recon
+        self.items["real"] = real
+        self.items["real_domain"] = real_domain
+        self.items["random_noise"] = random_noise
+        self.items["random_domain"] = random_domain
+        self.items["random_noise1"] = random_noise1
+        self.items["random_noise2"] = random_noise2
+        self.items["random_domain1"] = random_domain1
+        self.items["logit_fake"] = logit_fake
+        self.items["style_fake"] = style_fake
+        self.items["style_real"] = style_real
+        self.items["fake"] = fake
+        self.items["recon"] = image_recon
+        self.items["style_recon"] = style_recon
 
     def train_starGAN(self, init_epoch):
         d_step, g_step = self.config['d_step'], self.config['g_step']
@@ -276,10 +268,12 @@ class StarGAN(nn.Module):
                             self.test_sample = self.generate_test_samples(save=True)
                             clear_jupyter_console()
 
-                # TODO : tricky
-                if epoch >= 2 and not (iters + 1) % 1000:
+                # TODO : arbitrary
+                if epoch >= 10 and not (iters + 1) % 1000:
                     print("w_ds decayed:", self.w_ds, " -> ", self.w_ds * 0.9)
                     self.w_ds *= 0.9  #
+
+            self.save_models(epoch)
 
     def print_log(self, epoch, iters):
         adv_d_real = self.loss['adv_d_real']
@@ -308,6 +302,7 @@ class StarGAN(nn.Module):
             'optimizer_g': self.optimizer_g.state_dict(),
             # 'scheduler_d': self.scheduler_d.state_dict(),  # TODO
             # 'scheduler_g': self.scheduler_g.state_dict(),
+            'w_ds': self.w_ds,
             'current_epoch': epoch,
         }
 
@@ -329,10 +324,12 @@ class StarGAN(nn.Module):
         self.optimizer_g.load_state_dict(checkpoint['optimizer_g'])
         # self.scheduler_d.load_state_dict(checkpoint['scheduler_d'])
         # self.scheduler_g.load_state_dict(checkpoint['scheduler_g'])
+        self.w_ds = checkpoint['w_ds']
         self.current_epoch = checkpoint['current_epoch']
+        return epoch
 
     def resume_train(self, restart_epoch=False):
-        self.load_models(restart_epoch)
+        restart_epoch = self.load_models(restart_epoch)
         print("Resume Training - Epoch: ", restart_epoch)
         self.train_starGAN(restart_epoch + 1)
 

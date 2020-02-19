@@ -1,14 +1,15 @@
 import torch
 from torch import nn
 from torch.autograd import Variable
+from collections import OrderedDict
 
 from common.layers import Conv2dBlock, LinearBlock, \
     ResBlockPreActivationWithAvgPool, ResBlockPreActivation, ResBlockPreActivationWithUpsample
 
 
-def gather_domain(src, domain_index):  # only works at torch.gather(..., dim=1)
-    domain_index = domain_index.repeat(1, 1, src.size(-1))
-    return torch.gather(src, 1, domain_index.long())
+def gather_domain(src, domain):  # only works at torch.gather(..., dim=1)
+    domain = domain.repeat(1, 1, src.size(-1))
+    return torch.gather(src, 1, domain.long())  # src: (batch, n_domain, style_dim), domain: (batch, 1, style_dim)
 
 
 class Generator(nn.Module):
@@ -23,7 +24,7 @@ class Generator(nn.Module):
 
         layers = []
 
-        layers += [Conv2dBlock(3, dim, 1, 1, 0, 'none', 'none', bias=False)]
+        layers += [Conv2dBlock(3, dim, 1, 1, 0, 'none', 'none')]
 
         for n_down in range(n_downs):
             layers += [ResBlockPreActivationWithAvgPool(dim, dim * 2, 3, 1, 1, 'in', 'relu')]
@@ -40,7 +41,8 @@ class Generator(nn.Module):
                 ResBlockPreActivationWithUpsample(dim, dim // 2, 3, 1, 1, 'adain_affine', 'relu')]
             dim //= 2
 
-        layers += [Conv2dBlock(dim, 3, 3, 1, 1, 'none', 'none', bias=False)]
+        # layers += [Conv2dBlock(dim, 3, 1, 1, 0, 'none', 'none')]  # TODO : TRICKY!! 1x1 raise cudnn bug
+        layers += [Conv2dBlock(dim, 3, 3, 1, 1, 'none', 'none')]
 
         self.layers = layers
         self.model = nn.Sequential(*layers)
@@ -78,8 +80,8 @@ class MappingNetwork(nn.Module):
         self.model = nn.Sequential(*layers)
 
     def forward(self, x, target_domain):
-        batch_size = x.size(0)
-        x = self.model(x).view(batch_size, self.num_domain, self.dim_style)
+        batch_size = target_domain.size(0)
+        x = self.model(x).repeat(batch_size, 1).view(batch_size, self.num_domain, self.dim_style)
         return gather_domain(x, target_domain)  # (batch, n_domain, 64) -> (batch, 1, 64)
 
 
@@ -94,7 +96,7 @@ class StyleEncoder(nn.Module):
         self.dim_style = config_enc['output_dim']
 
         layers = []
-        layers += [Conv2dBlock(3, ch, 1, 1, 0, 'none', 'none', bias=False)]
+        layers += [Conv2dBlock(3, ch, 1, 1, 0, 'none', 'none')]
 
         for n_intermediate in range(n_intermediates):
             if n_intermediate < n_intermediates - 1:
@@ -107,7 +109,7 @@ class StyleEncoder(nn.Module):
                     nn.AvgPool2d(2)
                 ]
 
-        activation_height = img_size // 2 ** n_intermediates
+        activation_height = img_size // 2 ** n_intermediates  # 4
         layers += [
             nn.LeakyReLU(0.1, inplace=True),
             Conv2dBlock(ch, ch, activation_height, 1, 0, 'none', 'lrelu'),
@@ -118,8 +120,7 @@ class StyleEncoder(nn.Module):
         self.model = nn.Sequential(*layers)
 
     def forward(self, x, target_domain):
-        batch_size = x.size(0)
-        x = self.model(x).view(batch_size, self.num_domain, self.dim_style)
+        x = self.model(x).view(-1, self.num_domain, self.dim_style)
         return gather_domain(x, target_domain)  # (batch, n_domain, 64) -> (batch, 1, 64)
 
 
@@ -134,7 +135,7 @@ class Discriminator(nn.Module):
         self.dim_style = config_dis['output_dim']
 
         layers = []
-        layers += [Conv2dBlock(3, ch, 1, 1, 0, 'none', 'none', bias=False)]
+        layers += [Conv2dBlock(3, ch, 1, 1, 0, 'none', 'none')]
 
         for n_intermediate in range(n_intermediates):
             if n_intermediate < n_intermediates - 1:
@@ -158,8 +159,7 @@ class Discriminator(nn.Module):
         self.model = nn.Sequential(*layers)
 
     def forward(self, x, target_domain):
-        batch_size = x.size(0)
-        x = self.model(x).view(batch_size, self.num_domain, self.dim_style)
+        x = self.model(x).view(-1, self.num_domain, self.dim_style)
         return gather_domain(x, target_domain)  # (batch, n_domain, 1) -> (batch, 1, 1)
 
 

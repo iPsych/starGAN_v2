@@ -30,17 +30,18 @@ def get_scheduler(optimizer, config, iterations=-1):
     return scheduler
 
 
-def weights_init(init_type='gaussian'):
+def weights_init(init_type):
     def init_fun(m):
         classname = m.__class__.__name__
         if (classname.find('Conv') == 0 or classname.find('Linear') == 0) and hasattr(m, 'weight'):
-            # print m.__class__.__name__
+            # print(classname, m)
             if init_type == 'gaussian':
                 init.normal_(m.weight.data, 0.0, 0.02)
             elif init_type == 'xavier':
                 init.xavier_normal_(m.weight.data, gain=math.sqrt(2))
             elif init_type == 'kaiming':
-                init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
+                nonlinearity = "sigmoid" if m.nonlinearity == 'none' else "leaky_relu"
+                init.kaiming_normal_(m.weight.data, a=0, mode='fan_in', nonlinearity=nonlinearity)
             elif init_type == 'orthogonal':
                 init.orthogonal_(m.weight.data, gain=math.sqrt(2))
             elif init_type == 'default':
@@ -48,7 +49,7 @@ def weights_init(init_type='gaussian'):
             else:
                 assert 0, "Unsupported initialization: {}".format(init_type)
 
-            if hasattr(m, 'bias') and m.bias is not None:
+            if hasattr(m, 'bias') and m.bias is not None and not hasattr(m, 'is_affine'):  # TODO
                 init.constant_(m.bias.data, 0.0)
 
     return init_fun
