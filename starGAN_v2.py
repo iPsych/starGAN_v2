@@ -45,8 +45,8 @@ class StarGAN(nn.Module):
         self.max_iter = config['max_iter']
         self.img_size = config['crop_size']
 
-        self.path_sample = os.path.join('./results/samples', config['save_name'])
-        self.path_model = os.path.join('./results/models', config['save_name'])
+        self.path_sample = os.path.join('./results/', config['save_name'], "samples")
+        self.path_model = os.path.join('./results/', config['save_name'], "models")
 
         self.w_style = config['w_style']
         self.w_ds = config['w_ds']
@@ -110,15 +110,14 @@ class StarGAN(nn.Module):
         return loss
 
     def calc_r1(self, real_images, logit_real):
-        batch_size = real_images.size(0)
-        grad_dout = autograd.grad(
-            outputs=logit_real.sum(), inputs=real_images,
-            create_graph=True, retain_graph=True, only_inputs=True
+        grad_real = autograd.grad(
+            outputs=logit_real.sum(), inputs=real_images, create_graph=True
         )[0]
-        grad_dout2 = grad_dout.pow(2)
-        assert (grad_dout2.size() == real_images.size())
-        reg = grad_dout2.view(batch_size, -1).sum(1).mean()
-        return reg
+        grad_penalty = (
+                grad_real.view(grad_real.size(0), -1).norm(2, dim=1) ** 2
+        ).mean()
+        grad_penalty = 0.5 * grad_penalty
+        return grad_penalty
 
     def calc_gp(self, real_images, fake_images):  # TODO :
         raise NotImplementedError("")
@@ -146,7 +145,7 @@ class StarGAN(nn.Module):
 
     def update_d(self, real, real_domain, random_noise, random_domain):
         reset_gradients([self.optimizer_g, self.optimizer_d])
-        real.requires_grad_()
+        real.requires_grad = True
 
         style_mapped = self.mapping_network(random_noise, random_domain)
         fake = self.generator(real, style_mapped)
@@ -159,9 +158,9 @@ class StarGAN(nn.Module):
         adv_d_fake = self.calc_adversarial_loss(logit_fake, is_real=False)  # .contiguous()
 
         if self.config['gan_type'] == 'bce':
-            regul = self.calc_r1(real, logit_real)
+            regul = self.calc_r1(real, logit_real) * self.w_regul
         elif self.config['gan_type'] == 'wgan':
-            regul = self.calc_gp(real, fake)
+            regul = self.calc_gp(real, fake) * self.w_regul
 
         self.adv_d_fake = adv_d_fake
         self.adv_d_real = adv_d_real
@@ -260,7 +259,7 @@ class StarGAN(nn.Module):
 
                     if not (iters + 1) % image_display_iter:
                         show_batch_torch(
-                            torch.cat([self.real, self.fake.clamp(-1, 1), self.recon.clamp(-1, 1)]),
+                            torch.cat([real, self.items['fake'].clamp(-1, 1), self.items['recon'].clamp(-1, 1)]),
                             n_rows=3, n_cols=-1
                         )
 
